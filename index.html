@@ -3,136 +3,351 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Service worker reset</title>
+<title>Site data cleaner</title>
 <style>
-  :root {
-    --bg: #f6f7f9;
-    --fg: #1b1f24;
-    --muted: #5b6570;
-    --panel: #ffffff;
-    --line: #d9dee4;
-    --ok: #1a7f4b;
-    --err: #b3261e;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14171a;
-      --fg: #e8ebee;
-      --muted: #9aa4ae;
-      --panel: #1c2024;
-      --line: #2e353c;
-      --ok: #4cc38a;
-      --err: #ff8a80;
-    }
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; }
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    padding: 2rem 1rem;
-  }
-  main { max-width: 36rem; margin: 0 auto; }
-  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
-  p.lead { color: var(--muted); margin: 0 0 1.5rem; }
-  #status { font-weight: 600; margin-bottom: 1rem; }
-  #status.ok { color: var(--ok); }
-  #status.err { color: var(--err); }
-  ul { list-style: none; margin: 0 0 1.5rem; padding: 0; }
-  li {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: .6rem .8rem;
-    margin-bottom: .5rem;
-    overflow-wrap: anywhere;
-    font-size: .9rem;
-  }
-  button {
-    font: inherit;
-    padding: .55rem 1rem;
-    border-radius: 6px;
-    border: 1px solid var(--line);
-    background: var(--panel);
-    color: var(--fg);
-    cursor: pointer;
-  }
-  button:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
-  small { display: block; color: var(--muted); margin-top: 1.5rem; }
+:root{--bg:#f4f5f7;--fg:#1b1f24;--mut:#5b6570;--panel:#fff;--line:#d8dde3;--acc:#0b5fd6;--ok:#1a7f4b;--bad:#b3261e;--warn:#8a5a00}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--fg:#e8ebee;--mut:#9aa4ae;--panel:#1b1e22;--line:#2d343b;--acc:#6aa5ff;--ok:#4cc38a;--bad:#ff8a80;--warn:#e5b04a}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:1.5rem 1rem 4rem}
+main{max-width:52rem;margin:0 auto}
+h1{font-size:1.45rem;margin:0}
+.lead{color:var(--mut);margin:.2rem 0 1.2rem}
+.panel,.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.9rem 1rem;margin-bottom:.8rem}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:.4rem 0}
+.bar i{display:block;height:100%;background:var(--acc);width:0}
+.row{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.row.sp{justify-content:space-between}
+button{font:inherit;padding:.4rem .8rem;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button:hover:not(:disabled){border-color:var(--acc)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--acc);color:#fff;border-color:var(--acc)}
+button.danger{color:var(--bad)}
+button.sm{padding:.15rem .5rem;font-size:.82rem}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.card h2{font-size:1rem;margin:0}
+.card label.t{display:flex;gap:.5rem;align-items:center;font-weight:600}
+.count{color:var(--mut);font-size:.85rem}
+.desc{color:var(--mut);font-size:.85rem;margin:.3rem 0 .4rem}
+.note{font-size:.85rem;color:var(--warn);margin:.3rem 0}
+.card.off{opacity:.6}
+ul.items{list-style:none;margin:.4rem 0 0;padding:0;max-height:12rem;overflow:auto}
+ul.items li{display:flex;justify-content:space-between;gap:.6rem;align-items:center;border-top:1px solid var(--line);padding:.3rem 0;font-size:.85rem;overflow-wrap:anywhere}
+#log{font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;max-height:14rem;overflow:auto;white-space:pre-wrap;margin:0}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.sticky{position:sticky;top:0;z-index:5;background:var(--bg);padding:.4rem 0}
+small{color:var(--mut)}
+details.panel summary{cursor:pointer;font-weight:600}
+table{width:100%;border-collapse:collapse;margin-top:.6rem;font-size:.88rem}
+th,td{text-align:left;padding:.3rem .4rem;border-top:1px solid var(--line);vertical-align:middle}
+th{color:var(--mut);font-weight:600;border-top:0}
+td input[type=text]{width:100%;font:inherit;padding:.25rem .4rem;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--fg)}
 </style>
 </head>
 <body>
 <main>
-  <h1>Service worker reset</h1>
-  <p class="lead">Removes every service worker registered on <strong id="origin"></strong>. IndexedDB, localStorage, and cookies are left alone.</p>
+<h1>Site data cleaner</h1>
+<p class="lead">Inspect and delete browser data stored for <strong id="origin"></strong>. Everything runs locally; nothing is sent anywhere.</p>
 
-  <div id="status" role="status" aria-live="polite">Working…</div>
-  <ul id="log"></ul>
-  <button id="again" type="button">Run again</button>
+<div class="panel" id="overview"><div id="usage">Measuring storage…</div><div class="bar"><i id="usebar"></i></div><div id="usedetail" class="count"></div></div>
 
-  <small>Service workers that are currently controlling a page may keep running until that page is closed. Reload any other tabs on this site afterward.</small>
+<details class="panel" id="settings" open>
+  <summary>Settings</summary>
+  <div style="margin-top:.6rem">
+    <label class="row"><input type="checkbox" id="optConfirm"> Ask for confirmation before clearing</label>
+    <label class="row"><input type="checkbox" id="optReload"> Reload this page after clearing</label>
+  </div>
+  <table>
+    <thead><tr><th>Category</th><th>Protect</th><th>Keep list (partial names, * wildcard, comma-separated)</th></tr></thead>
+    <tbody id="cattable"></tbody>
+  </table>
+  <div class="row sp" style="margin-top:.6rem">
+    <small><b>Protect</b> locks a category completely. <b>Keep list</b> skips matching items in bulk clears. Settings are saved in this browser under the localStorage key <code>__cleaner_settings</code>, which this tool never deletes.</small>
+    <button id="resetSettings" type="button" class="sm">Reset settings</button>
+  </div>
+</details>
+
+<div class="sticky panel">
+  <div class="row sp">
+    <div class="row">
+      <button id="selPwa" type="button">Select PWA data</button>
+      <button id="selAll" type="button">Select all (except locked)</button>
+      <button id="selNone" type="button">Select none</button>
+    </div>
+    <div class="row">
+      <button id="rescan" type="button">Rescan</button>
+      <button id="clearSel" type="button" class="primary">Clear selected</button>
+    </div>
+  </div>
+</div>
+
+<div id="cards"></div>
+
+<div class="panel"><div class="row sp"><strong>Log</strong><button id="clrlog" type="button" class="sm">Clear log</button></div><pre id="log"></pre></div>
+
+<small>Not clearable from a web page: the browser’s HTTP cache (use a hard reload, or your browser’s “Clear browsing data”), HttpOnly cookies (invisible to scripts), and granted permissions or installed PWAs (the browser blocks scripts from revoking or uninstalling those; see the Permissions and PWA cards for how). Service workers controlling an open tab may keep running until that tab is closed.</small>
 </main>
 
 <script>
-(function () {
-  var statusEl = document.getElementById('status');
-  var logEl = document.getElementById('log');
-  document.getElementById('origin').textContent = location.origin;
+(function(){
+'use strict';
+var $=function(s){return document.querySelector(s)};
+var logEl=$('#log');
+$('#origin').textContent=location.origin;
 
-  function log(msg) {
-    var li = document.createElement('li');
-    li.textContent = msg;
-    logEl.appendChild(li);
-  }
+function log(m,c){var d=document.createElement('div');if(c)d.className=c;d.textContent=new Date().toLocaleTimeString()+'  '+m;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight}
+function fmt(b){if(b==null)return'?';var u=['B','KB','MB','GB','TB'],i=0;while(b>=1024&&i<4){b/=1024;i++}return b.toFixed(i?1:0)+' '+u[i]}
+var SKEY='__cleaner_settings';
+function defaults(){return{confirm:true,reload:false,cats:{idb:{locked:true,keep:''}}}}
+function loadSettings(){try{var x=JSON.parse(localStorage.getItem(SKEY));if(x&&x.cats)return x}catch(e){}return defaults()}
+var settings=loadSettings();
+function saveSettings(){try{localStorage.setItem(SKEY,JSON.stringify(settings))}catch(e){}}
+function cfg(c){return settings.cats[c.id]||(settings.cats[c.id]={locked:false,keep:''})}
+function isLocked(c){return !c.info&&!!cfg(c).locked}
+function isKept(c,label){
+  var pats=(cfg(c).keep||'').split(/[,\n]/).map(function(x){return x.trim()}).filter(Boolean);
+  return pats.some(function(p){
+    var re=new RegExp(p.replace(/[.+?^${}()|[\]\\]/g,'\\$&').replace(/\*/g,'.*'),'i');
+    return re.test(label);
+  });
+}
 
-  function setStatus(msg, cls) {
-    statusEl.textContent = msg;
-    statusEl.className = cls || '';
-  }
+/* ---------- category definitions ---------- */
+var cats=[];
 
-  async function run() {
-    logEl.textContent = '';
-    setStatus('Working…');
+cats.push({id:'sw',title:'Service workers',pwa:true,
+  desc:'Unregisters every service worker on this origin, all scopes.',
+  supported:function(){return 'serviceWorker' in navigator},
+  scan:async function(){
+    var regs=await navigator.serviceWorker.getRegistrations();
+    return regs.map(function(r){var w=r.active||r.waiting||r.installing;return{label:r.scope+(w?'  ['+w.state+']':''),remove:async function(){await r.unregister()}}});
+  }});
 
-    if (!('serviceWorker' in navigator)) {
-      setStatus('Service workers are not supported in this browser.', 'err');
-      return;
+cats.push({id:'push',title:'Push subscriptions',pwa:true,
+  desc:'Unsubscribes push notification endpoints held by service workers.',
+  supported:function(){return 'serviceWorker' in navigator&&'PushManager' in window},
+  scan:async function(){
+    var out=[],regs=await navigator.serviceWorker.getRegistrations();
+    for(var i=0;i<regs.length;i++){var s=await regs[i].pushManager.getSubscription();
+      if(s)(function(s,r){out.push({label:r.scope+' → '+s.endpoint.slice(0,60)+'…',remove:async function(){await s.unsubscribe()}})})(s,regs[i]);}
+    return out;
+  }});
+
+cats.push({id:'sync',title:'Background sync tasks',pwa:true,
+  desc:'Cancels periodic background sync registrations (where supported).',
+  supported:function(){return 'serviceWorker' in navigator},
+  scan:async function(){
+    var out=[],regs=await navigator.serviceWorker.getRegistrations();
+    for(var i=0;i<regs.length;i++){var r=regs[i];
+      if(r.periodicSync&&r.periodicSync.getTags){var tags=await r.periodicSync.getTags();
+        tags.forEach(function(t){out.push({label:'periodic: '+t+' ('+r.scope+')',remove:async function(){await r.periodicSync.unregister(t)}})});}
     }
+    return out;
+  }});
 
-    try {
-      // Returns every registration on this origin (all scopes).
-      var regs = await navigator.serviceWorker.getRegistrations();
+cats.push({id:'cache',title:'Cache Storage',pwa:true,
+  desc:'Deletes every named cache created with the Cache API (PWA offline assets, workbox, etc.).',
+  supported:function(){return 'caches' in window},
+  scan:async function(){
+    var names=await caches.keys(),out=[];
+    for(var i=0;i<names.length;i++){var c=await caches.open(names[i]);var n=(await c.keys()).length;
+      (function(nm,n){out.push({label:nm+'  ('+n+' entries)',remove:async function(){await caches.delete(nm)}})})(names[i],n);}
+    return out;
+  }});
 
-      if (!regs.length) {
-        setStatus('No service workers found on this origin.', 'ok');
-        return;
-      }
+cats.push({id:'idb',title:'IndexedDB',
+  desc:'Deletes IndexedDB databases. Protected by default; change this in Settings.',
+  supported:function(){return 'indexedDB' in window&&indexedDB.databases},
+  scan:async function(){
+    var dbs=await indexedDB.databases();
+    return dbs.map(function(d){return{label:d.name+'  (v'+d.version+')',remove:function(){
+      return new Promise(function(res){var q=indexedDB.deleteDatabase(d.name);
+        q.onsuccess=function(){res()};q.onerror=function(){log('Error deleting '+d.name,'bad');res()};
+        q.onblocked=function(){log('Delete of “'+d.name+'” is blocked by an open connection. Close other tabs of this site.','bad');res()};});}}});
+  }});
 
-      var removed = 0;
-      for (var i = 0; i < regs.length; i++) {
-        var reg = regs[i];
-        var scope = reg.scope;
-        try {
-          var ok = await reg.unregister();
-          log((ok ? 'Unregistered: ' : 'Not removed: ') + scope);
-          if (ok) removed++;
-        } catch (e) {
-          log('Failed: ' + scope + ' (' + e.message + ')');
-        }
-      }
+cats.push({id:'ls',title:'localStorage',
+  desc:'Removes all key/value pairs in localStorage. This tool’s own settings key is always skipped.',
+  supported:function(){try{return !!window.localStorage}catch(e){return false}},
+  scan:async function(){
+    var out=[];for(var i=0;i<localStorage.length;i++){(function(k){if(k!==SKEY)out.push({label:k+'  ('+(localStorage.getItem(k)||'').length+' chars)',remove:function(){localStorage.removeItem(k)}})})(localStorage.key(i))}
+    return out;
+  }});
 
-      setStatus(
-        'Removed ' + removed + ' of ' + regs.length + ' service worker' + (regs.length === 1 ? '' : 's') + '.',
-        removed === regs.length ? 'ok' : 'err'
-      );
-    } catch (e) {
-      setStatus('Could not clear service workers: ' + e.message, 'err');
-    }
-  }
+cats.push({id:'ss',title:'sessionStorage',
+  desc:'Removes all key/value pairs in sessionStorage for this tab.',
+  supported:function(){try{return !!window.sessionStorage}catch(e){return false}},
+  scan:async function(){
+    var out=[];for(var i=0;i<sessionStorage.length;i++){(function(k){out.push({label:k,remove:function(){sessionStorage.removeItem(k)}})})(sessionStorage.key(i))}
+    return out;
+  }});
 
-  document.getElementById('again').addEventListener('click', run);
-  run();
+function killCookie(n){
+  var parts=location.pathname.split('/').filter(Boolean),paths=['/'],p='';
+  parts.forEach(function(x){p+='/'+x;paths.push(p,p+'/')});
+  var h=location.hostname.split('.'),doms=[null];
+  for(var i=0;i<h.length-1;i++){var d=h.slice(i).join('.');doms.push(d,'.'+d)}
+  paths.forEach(function(pa){doms.forEach(function(d){
+    document.cookie=n+'=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path='+pa+(d?'; domain='+d:'');});});
+}
+cats.push({id:'cookies',title:'Cookies (script-readable)',
+  desc:'Expires every cookie JavaScript can see, across path and domain variants. HttpOnly cookies can’t be touched.',
+  supported:function(){return true},
+  scan:async function(){
+    if(!document.cookie)return[];
+    return document.cookie.split('; ').map(function(s){var n=s.split('=')[0];return{label:n,remove:function(){killCookie(n)}}});
+  }});
+
+async function opfsRoot(){return navigator.storage.getDirectory()}
+cats.push({id:'opfs',title:'Origin private file system',
+  desc:'Deletes files and folders in the origin-private file system (used by SQLite WASM, editors, etc.).',
+  supported:function(){return navigator.storage&&navigator.storage.getDirectory},
+  scan:async function(){
+    var root=await opfsRoot(),out=[];
+    for await(var e of root.entries()){(function(name,kind){out.push({label:name+(kind==='directory'?'/':''),remove:async function(){var r=await opfsRoot();await r.removeEntry(name,{recursive:true})}})})(e[0],e[1].kind)}
+    return out;
+  }});
+
+cats.push({id:'buckets',title:'Storage Buckets',
+  desc:'Deletes named storage buckets (Chromium) along with the data inside them.',
+  supported:function(){return 'storageBuckets' in navigator},
+  scan:async function(){
+    var names=await navigator.storageBuckets.keys();
+    return names.map(function(n){return{label:n,remove:async function(){await navigator.storageBuckets.delete(n)}}});
+  }});
+
+cats.push({id:'name',title:'window.name',
+  desc:'Resets the window.name value, which can persist across navigations.',
+  supported:function(){return true},
+  scan:async function(){return window.name?[{label:'“'+window.name.slice(0,80)+'”',remove:function(){window.name=''}}]:[]}});
+
+/* ---------- info-only cards ---------- */
+var PERMS=['geolocation','notifications','push','camera','microphone','clipboard-read','clipboard-write','persistent-storage','midi','background-sync','screen-wake-lock','storage-access','accelerometer','gyroscope','magnetometer','payment-handler','local-fonts','window-management'];
+cats.push({id:'perm',title:'Permissions',info:true,
+  desc:'Shows the current state of permissions for this origin. Browsers do not let scripts revoke them, so reset them manually:',
+  help:['Chrome/Edge/Brave: click the icon left of the address bar → Site settings → Reset permissions.','Firefox: click the icon left of the address bar → Clear cookies and site data, or Permissions → remove.','Safari: Settings → Websites, choose the site and set each item to Ask.'],
+  supported:function(){return 'permissions' in navigator},
+  scan:async function(){
+    var out=[];
+    for(var i=0;i<PERMS.length;i++){try{var s=await navigator.permissions.query({name:PERMS[i]});out.push({label:PERMS[i]+':  '+s.state,state:s.state})}catch(e){}}
+    return out;
+  },
+  actions:[{label:'Copy Chrome site-settings URL',fn:function(){
+    var u='chrome://settings/content/siteDetails?site='+encodeURIComponent(location.origin);
+    return navigator.clipboard.writeText(u).then(function(){log('Copied: '+u+' (paste into a new tab)','ok')},function(){log('Clipboard blocked. URL: '+u,'bad')});}}]});
+
+cats.push({id:'pwa',title:'Installed app (PWA) status',info:true,pwa:true,
+  desc:'Shows whether this page is running as an installed app. Uninstalling must be done by you:',
+  help:['Chrome/Edge desktop: open the app → ⋮ menu → Uninstall, or visit chrome://apps and right-click it.','Android: long-press the app icon → Uninstall (or Remove).','iOS/iPadOS: long-press the Home Screen icon → Remove App.','Clear service workers and caches above first to fully reset the app’s offline state.'],
+  supported:function(){return true},
+  scan:async function(){
+    var m=['standalone','fullscreen','minimal-ui','window-controls-overlay','browser'].filter(function(x){return matchMedia('(display-mode: '+x+')').matches});
+    var out=[{label:'Display mode: '+(m[0]||'unknown')},{label:'iOS standalone: '+(navigator.standalone===true?'yes':'no / n/a')}];
+    if(navigator.getInstalledRelatedApps){try{var a=await navigator.getInstalledRelatedApps();out.push({label:'Related installed apps: '+a.length})}catch(e){}}
+    var pe=navigator.storage&&navigator.storage.persisted?await navigator.storage.persisted():null;
+    out.push({label:'Persistent storage granted: '+(pe===null?'n/a':pe?'yes (browser won’t evict automatically)':'no')});
+    return out;
+  },
+  actions:[{label:'Clear app badge',fn:async function(){if(navigator.clearAppBadge){await navigator.clearAppBadge();log('App badge cleared','ok')}else log('Badging API not supported','bad')}}]});
+
+/* ---------- rendering ---------- */
+var cardsEl=$('#cards');
+cats.forEach(function(c){
+  var el=document.createElement('section');el.className='card';el.id='c-'+c.id;
+  el.innerHTML='<div class="row sp"><label class="t"><input type="checkbox" '+(c.info?'hidden':'')+' data-sel="'+c.id+'"><h2></h2><span class="count"></span></label><div class="row"></div></div><p class="desc"></p><div class="note"></div><ul class="items"></ul>';
+  el.querySelector('h2').textContent=c.title;
+  el.querySelector('.desc').textContent=c.desc;
+  c.el=el;cardsEl.appendChild(el);
+});
+
+function render(c){
+  var el=c.el,r=c.last||{items:[],ok:false},locked=isLocked(c);
+  var box=el.querySelector('[data-sel]'),acts=el.querySelector('.row .row'),ul=el.querySelector('.items'),note=el.querySelector('.note');
+  el.classList.toggle('off',!r.ok||locked);
+  ul.textContent='';acts.textContent='';
+  el.querySelector('.count').textContent=!r.ok?'(not supported)':(c.info?'':'('+r.items.length+')');
+  box.disabled=!r.ok||locked||c.info;
+  if(box.disabled)box.checked=false;
+  note.textContent=locked?'Protected in Settings: cannot be selected or deleted.':(r.err?'Error: '+r.err:'');
+  if(c.info&&c.help){c.help.forEach(function(h){var li=document.createElement('li');li.textContent=h;ul.appendChild(li)})}
+  (r.items||[]).forEach(function(it){
+    var li=document.createElement('li'),s=document.createElement('span');s.textContent=it.label+(it.remove&&!locked&&isKept(c,it.label)?'   (kept in bulk clears)':'');
+    if(it.state==='granted')s.className='ok';else if(it.state==='denied')s.className='bad';
+    li.appendChild(s);
+    if(it.remove){var b=document.createElement('button');b.className='sm danger';b.textContent='Delete';b.disabled=locked;
+      b.onclick=async function(){try{await it.remove();log('Deleted: '+it.label,'ok')}catch(e){log('Failed: '+it.label+' ('+e.message+')','bad')}await refresh(c);overview()};li.appendChild(b)}
+    ul.appendChild(li);
+  });
+  if(!c.info){var cb=document.createElement('button');cb.className='sm danger';cb.textContent='Clear';cb.disabled=!r.ok||locked||!r.items.length;
+    cb.onclick=async function(){if(settings.confirm&&!confirm('Clear '+c.title+' for this site? This cannot be undone.'))return;await clearCat(c);overview();afterClear()};acts.appendChild(cb)}
+  (c.actions||[]).forEach(function(a){var b=document.createElement('button');b.className='sm';b.textContent=a.label;b.onclick=function(){Promise.resolve(a.fn()).catch(function(e){log(e.message,'bad')})};acts.appendChild(b)});
+}
+
+async function refresh(c){
+  var r={ok:false,items:[]};
+  try{r.ok=!!c.supported();if(r.ok)r.items=await c.scan()}catch(e){r.err=e.message}
+  c.last=r;render(c);
+}
+
+function afterClear(){if(settings.reload)setTimeout(function(){location.reload()},700)}
+async function clearCat(c){
+  if(isLocked(c)){log(c.title+': protected, skipped.');return}
+  await refresh(c);
+  var all=(c.last.items||[]).filter(function(i){return i.remove});
+  var items=all.filter(function(i){return !isKept(c,i.label)});
+  if(all.length>items.length)log(c.title+': kept '+(all.length-items.length)+' item(s) from your keep list.');
+  var done=0;
+  for(var i=0;i<items.length;i++){try{await items[i].remove();done++}catch(e){log('Failed: '+items[i].label+' ('+e.message+')','bad')}}
+  log(c.title+': removed '+done+' of '+items.length,done===items.length?'ok':'bad');
+  await refresh(c);
+}
+
+async function overview(){
+  try{
+    var e=await navigator.storage.estimate();
+    $('#usage').innerHTML='<strong>Storage used:</strong> '+fmt(e.usage)+' of '+fmt(e.quota)+' quota';
+    $('#usebar').style.width=Math.min(100,(e.usage/e.quota)*100||0)+'%';
+    var d=e.usageDetails;$('#usedetail').textContent=d?Object.keys(d).map(function(k){return k+': '+fmt(d[k])}).join('   '):'';
+  }catch(x){$('#usage').textContent='Storage estimate not available in this browser.'}
+}
+
+async function scanAll(){for(var i=0;i<cats.length;i++)await refresh(cats[i]);await overview()}
+
+/* ---------- global controls ---------- */
+function selectWhere(fn){cats.forEach(function(c){var b=c.el.querySelector('[data-sel]');if(!b.disabled)b.checked=!!fn(c)})}
+$('#selPwa').onclick=function(){selectWhere(function(c){return c.pwa&&!c.info})};
+$('#selAll').onclick=function(){selectWhere(function(c){return !c.info})};
+$('#selNone').onclick=function(){selectWhere(function(){return false})};
+$('#rescan').onclick=scanAll;
+$('#clrlog').onclick=function(){logEl.textContent=''};
+$('#clearSel').onclick=async function(){
+  var sel=cats.filter(function(c){var b=c.el.querySelector('[data-sel]');return b.checked&&!b.disabled});
+  if(!sel.length){log('Nothing selected.');return}
+  if(settings.confirm&&!confirm('Clear: '+sel.map(function(c){return c.title}).join(', ')+'?\n\nThis cannot be undone.'))return;
+  this.disabled=true;
+  for(var i=0;i<sel.length;i++)await clearCat(sel[i]);
+  await overview();this.disabled=false;
+  log('Done. Reload other tabs of this site so they drop stale workers and caches.');afterClear();
+};
+
+function buildSettings(){
+  $('#optConfirm').checked=!!settings.confirm;$('#optReload').checked=!!settings.reload;
+  var t=$('#cattable');t.textContent='';
+  cats.filter(function(c){return !c.info}).forEach(function(c){
+    var s=cfg(c),tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td'),d=document.createElement('td');
+    a.textContent=c.title;
+    var lk=document.createElement('input');lk.type='checkbox';lk.checked=!!s.locked;lk.setAttribute('aria-label','Protect '+c.title);
+    lk.onchange=function(){s.locked=lk.checked;saveSettings();render(c)};b.appendChild(lk);
+    var k=document.createElement('input');k.type='text';k.value=s.keep||'';k.placeholder='e.g. my-db, user-*';k.setAttribute('aria-label','Keep list for '+c.title);
+    k.oninput=function(){s.keep=k.value;saveSettings();render(c)};d.appendChild(k);
+    tr.appendChild(a);tr.appendChild(b);tr.appendChild(d);t.appendChild(tr);
+  });
+}
+$('#optConfirm').onchange=function(){settings.confirm=this.checked;saveSettings()};
+$('#optReload').onchange=function(){settings.reload=this.checked;saveSettings()};
+$('#resetSettings').onclick=function(){settings=defaults();saveSettings();buildSettings();cats.forEach(render);log('Settings reset to defaults.')};
+
+buildSettings();
+scanAll();
 })();
 </script>
 </body>
